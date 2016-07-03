@@ -1,16 +1,14 @@
 require 'plist'
-
 module Fastlane
   module Actions
-
     class GoodifyInfoPlistAction < Action
       def self.run(params)
         # default entitlement version. we rarely, if ever, need to change this
-        plist = Plist::parse_xml(params[:plist])
+        plist = Plist.parse_xml(params[:plist])
 
         gd_entitlement_version = "1.0.0.0"
-        if ( params.values.has_key?(:good_entitlement_version) == true)
-          gd_entitlement_version = params[:good_entitlement_version];
+        if params.values.key?(:good_entitlement_version)
+          gd_entitlement_version = params[:good_entitlement_version]
         end
 
         plist["GDApplicationID"] = params[:good_entitlement_id]
@@ -25,22 +23,21 @@ module Fastlane
           "#{app_id}.sc2.1.0.0.0",
           "com.good.gd.discovery"
         ]
-        if params.values.fetch(:distribution, "appstore").downcase == "enterprise"
+        if params.values.fetch(:distribution, "appstore").casecmp("enterprise") == 0
           url_schemes.push("com.good.gd.discovery.enterprise")
         end
 
         # attempt to replace an existing set of GD url schemes
         replaced = false
         plist["CFBundleURLTypes"].each do |entry|
-          if ( entry["CFBundleURLSchemes"].include? "com.good.gd.discovery")
-            entry["CFBundleURLName"] = app_id
-            entry["CFBundleURLSchemes"] = url_schemes
-            replaced = true;
-            break;
-          end
+          next unless entry["CFBundleURLSchemes"].include?("com.good.gd.discovery")
+          entry["CFBundleURLName"] = app_id
+          entry["CFBundleURLSchemes"] = url_schemes
+          replaced = true
+          break
         end
 
-        if ( replaced == false)
+        unless replaced
           plist["CFBundleURLTypes"] << {
             "CFBundleURLName" => app_id,
             "CFBundleURLSchemes" => url_schemes
@@ -57,57 +54,44 @@ module Fastlane
         "This plugin will update the plist so that the built application can be deployed and managed within BlackBerry's Good Dynamics Control Center for Enterprise Mobility Management."
       end
 
-      def self.details
-        ""
-      end
-
       def self.available_options
         # options the action supports.
         [
+          FastlaneCore::ConfigItem.new(key: :plist,
+                                     env_name: "FL_GOODIFY_INFO_PLIST_FILEPATH",
+                                     description: "The file path to the plist that will be compiled to the app's Info.plist for the GoodifyInfoPlistAction",
+                                     verify_block: proc do |value|
+                                       UI.user_error!("Invalid plist file path for GoodifyInfoPlistAction given, pass using `plist: 'path/to/plist'`") if value.nil? || value.empty?
+                                       UI.user_error!("Non-existant plist file for GoodifyInfoPlistAction given") unless File.exist?(value)
+                                     end),
 
-            FastlaneCore::ConfigItem.new(key: :plist,
-                                         env_name: "FL_GOODIFY_INFO_PLIST_FILEPATH",
-                                         description: "The file path to the plist that will be compiled to the app's Info.plist for the GoodifyInfoPlistAction",
-                                         verify_block: proc do |value|
-                                           UI.user_error!("Invalid plist file path for GoodifyInfoPlistAction given, pass using `plist: 'path/to/plist'`") if (value.nil? || value.empty?)
-                                           UI.user_error!("Non-existant plist file for GoodifyInfoPlistAction given") if (!File.exists?(value))
-                                         end),
-
-           FastlaneCore::ConfigItem.new(key: :good_entitlement_version,
-                                       env_name: "FL_GOODIFY_INFO_PLIST_ENTITLEMENT_VERSION",
-                                       description: "The Good app version number for the GoodifyInfoPlistAction",
-                                       verify_block: proc do |value|
-                                         pattern = Regexp.new('^(:?[1-9]\d{0,2})(:?\.(:?0|[1-9]\d{0,2})){0,3}$')
-                                         did_match = !pattern.match(value).nil?
-                                         UI.user_error!("Invalid Good app version for GoodifyInfoPlistAction given, pass using `good_entitlement_version: '1.2.3.4'`") if (value and (value.empty? || !did_match))
-                                       end,
-                                       optional: true,
-                                       default_value: "1.0.0.0"),
+          FastlaneCore::ConfigItem.new(key: :good_entitlement_version,
+                                   env_name: "FL_GOODIFY_INFO_PLIST_ENTITLEMENT_VERSION",
+                                   description: "The Good app version number for the GoodifyInfoPlistAction",
+                                   verify_block: proc do |value|
+                                     pattern = Regexp.new('^(:?[1-9]\d{0,2})(:?\.(:?0|[1-9]\d{0,2})){0,3}$')
+                                     did_match = !pattern.match(value).nil?
+                                     UI.user_error!("Invalid Good app version for GoodifyInfoPlistAction given, pass using `good_entitlement_version: '1.2.3.4'`") if value and (value.empty? || !did_match)
+                                   end,
+                                   optional: true,
+                                   default_value: "1.0.0.0"),
 
           FastlaneCore::ConfigItem.new(key: :good_entitlement_id,
-                                       env_name: "FL_GOODIFY_INFO_PLIST_ENTITLEMENT_ID",
-                                       description: "The Good ID for the GoodifyInfoPlistAction",
-                                       verify_block: proc do |value|
-                                         UI.user_error!("No Good ID for GoodifyInfoPlistAction given, pass using `good_entitlement_id: 'com.example.good'`") if (value and value.empty?)
-                                         UI.user_error!("Good ID must be 35 characters or fewer in order to work with Windows Phones") if value.length > 35
-                                          # UI.user_error!("Couldn't find file at path '#{value}'") unless File.exist?(value)
-                                       end), # the default value if the user didn't provide one
+                                   env_name: "FL_GOODIFY_INFO_PLIST_ENTITLEMENT_ID",
+                                   description: "The Good ID for the GoodifyInfoPlistAction",
+                                   verify_block: proc do |value|
+                                     UI.user_error!("No Good ID for GoodifyInfoPlistAction given, pass using `good_entitlement_id: 'com.example.good'`") if value and value.empty?
+                                     UI.user_error!("Good ID must be 35 characters or fewer in order to work with Windows Phones") if value.length > 35
+                                   end), # the default value if the user didn't provide one
 
-           FastlaneCore::ConfigItem.new(key: :distribution,
-                                        env_name: "FL_GOODIFY_INFO_PLIST_DISTRIBUTION_TARGET",
-                                        description: "The distribution target, \"appstore\" or \"enterprise\", for the GoodifyInfoPlistAction",
-                                        verify_block: proc do |value|
-                                          UI.user_error!("Invalid distribution target given for GoodifyInfoPlistAction given, pass using `good_entitlement_id: 'appstore' or 'enterprise'`") if (value and value.empty? or !["appstore", "enterprise"].include?(value))
-                                        end,
-                                        default_value: "enterprise") # the default value if the user didn't provide one
+          FastlaneCore::ConfigItem.new(key: :distribution,
+                                    env_name: "FL_GOODIFY_INFO_PLIST_DISTRIBUTION_TARGET",
+                                    description: "The distribution target, \"appstore\" or \"enterprise\", for the GoodifyInfoPlistAction",
+                                    verify_block: proc do |value|
+                                      UI.user_error!("Invalid distribution target given for GoodifyInfoPlistAction given, pass using `good_entitlement_id: 'appstore' or 'enterprise'`") if value and value.empty? || !["appstore", "enterprise"].include?(value)
+                                    end,
+                                    default_value: "enterprise") # the default value if the user didn't provide one
         ]
-      end
-
-      def self.output
-        []
-      end
-
-      def self.return_value
       end
 
       def self.authors
